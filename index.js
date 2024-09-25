@@ -1,6 +1,4 @@
  // Configuration
- require('dotenv').config();
-
  const express = require("express")
 const app = express();
 const port = 8080;
@@ -12,25 +10,26 @@ const cors = require('cors');
 
 
 
-
-
 app.use(cors());
 
+
+
 const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-
-
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://restauration-project-4c00d-default-rtdb.firebaseio.com'
+    databaseURL: 'https://vol-project-b1f97-default-rtdb.firebaseio.com'
   });
 
   app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+
+
+
+
 app.get('/', (req, res) => {
     res.send('Hello World');
   });
-  
 // Route pour l'inscription des passagers
 app.post('/signup', (req, res) => {
     const { email, password, name, role } = req.body;
@@ -141,47 +140,91 @@ const authorizeCompany = (req, res, next) => {
 // les routes de compagne 
 //add avion
 
-app.post('/add_restaurant' , async (req, res) => {
+app.post('/add_avion' , async (req, res) => {
     try {
-        const {nom , adresse  , codepostal , id_restauration, nom_restauration ,photo} = req.body;
+        const { modele ,numeroSerie , capacite  ,poidsMax , id_compagne } = req.body;
 
         // Ajouter le vol à la collection 'flights' dans Firestore
-    await admin.firestore().collection('restaurants').add({
-          nom,adresse,codepostal,id_restauration,nom_restauration ,photo
+        const flightRef = await admin.firestore().collection('avions').add({
+          modele , numeroSerie , capacite  ,poidsMax , id_compagne
 
         });
 
-        res.json({ message: 'Restaurant ajouté avec succès'});
+        res.json({ message: 'Vol ajouté avec succès', flightId: flightRef.id });
     } catch (error) {
-        console.error('Erreur lors de l\'ajout du restaurant : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de l\'ajout du restaurant' });
+        console.error('Erreur lors de l\'ajout du vol:', error.message);
+        res.status(500).json({ error: 'Erreur lors de l\'ajout du vol' });
     }
 });
 
 
-
-
-
-app.get('/restaurants/:id_restauration', async (req, res) => {
+// Route pour récupérer tous les avions
+app.get('/planes',  async (req, res) => {
     try {
-        const idRestauration = req.params.id_restauration;
+        const snapshot = await admin.firestore().collection('avions').get();
+        const avions = snapshot.docs.map(doc => doc.data());
+        res.json(avions);
+    } catch (error) {
+        console.error('Erreur lors de la récupération des avions:', error.message);
+        res.status(500).json({ error: 'Erreur lors de la récupération des avions' });
+    }
+});
 
-        // Récupérer tous les documents de la collection 'restaurants' associés à l'ID du restaurant
-        const restaurantsSnapshot = await admin.firestore().collection('restaurants').where('id_restauration', '==', idRestauration).get();
 
-        const restaurants = [];
+app.post('/add_flight', async (req, res) => {
+    try {
+        const { avion, passagers, date, destination, heure_depart, heure_arrivee, duree , id_compagne ,nom_compagne } = req.body;
 
-        // Pour chaque restaurant trouvé, récupérer ses données
-        restaurantsSnapshot.forEach(doc => {
-            const restaurantData = doc.data();
-             restaurantData.id=doc.id;
-            restaurants.push(restaurantData);
+        // Ajouter le vol à la collection 'flights' dans Firestore
+        const flightRef = await admin.firestore().collection('flights').add({
+            avion: avion,
+            date: date,
+            destination: destination,
+            heure_depart: heure_depart,
+            heure_arrivee: heure_arrivee,
+            duree: duree,
+            id_compagne : id_compagne, 
+            nom_compagne
+
         });
 
-        res.json(restaurants);
+        res.json({ message: 'Vol ajouté avec succès', flightId: flightRef.id });
     } catch (error) {
-        console.error('Erreur lors de la récupération des restaurants du restaurant:', error.message);
-        res.status(500).json({ error: 'Erreur lors de la récupération des restaurants du restaurant.' });
+        console.error('Erreur lors de l\'ajout du vol:', error.message);
+        res.status(500).json({ error: 'Erreur lors de l\'ajout du vol' });
+    }
+});
+
+// Route pour récupérer tous les vols
+app.get('/flights/:id_compagne' ,  async (req, res) => {
+    try {
+        const idCompagne = req.params.id_compagne;
+
+        const snapshot = await admin.firestore().collection('flights').where('id_compagne', '==', idCompagne).get();
+        const flights = [];
+        snapshot.forEach(doc => {
+            flights.push({ id: doc.id, ...doc.data() }); // Ajouter l'ID du document dans la réponse
+        });
+        res.json(flights);
+    } catch (error) {
+        console.error('Erreur lors de la récupération des vols par id_compagne:', error.message);
+        res.status(500).json({ error: 'Erreur lors de la récupération des vols par id_compagne' });
+    }
+});
+
+
+// Route pour récupérer tous les vols
+app.get('/flights', async (req, res) => {
+    try {
+        const snapshot = await admin.firestore().collection('flights').get();
+        const flights = [];
+        snapshot.forEach(doc => {
+            flights.push({ id: doc.id, ...doc.data() }); // Ajouter l'ID du document dans la réponse
+        });
+        res.json(flights);
+    } catch (error) {
+        console.error('Erreur lors de la récupération des vols:', error.message);
+        res.status(500).json({ error: 'Erreur lors de la récupération des vols' });
     }
 });
 
@@ -189,68 +232,61 @@ app.get('/restaurants/:id_restauration', async (req, res) => {
 
 
 
-
-
-app.delete('/comments/:id', async (req, res) => {
+// Endpoint pour créer une relation entre un vol et un passager
+app.post('/relation-vol-passager',async (req, res) => {
     try {
-        const commentId = req.params.id;
+        const { id_vol, id_passager } = req.body;
 
-        // Supprimer le commentaire de la collection 'comment' dans Firestore
-        await admin.firestore().collection('comment').doc(commentId).delete();
+        // Référence à la collection de relations vol-passager
+        const relationsRef = admin.firestore().collection('relations_vol_passager');
+        
+        // Ajout d'un document représentant la relation entre le vol et le passager
+        await relationsRef.add({
+            id_vol: id_vol,
+            id_passager: id_passager
+        });
 
-        res.json({ message: 'Commentaire supprimé avec succès' });
+        res.status(200).json({ message: 'Relation vol-passager ajoutée avec succès.' });
     } catch (error) {
-        console.error('Erreur lors de la suppression du commentaire : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de la suppression du commentaire' });
+        console.error('Erreur lors de l\'ajout de la relation vol-passager:', error.message);
+        res.status(500).json({ error: 'Erreur lors de l\'ajout de la relation vol-passager.' });
     }
 });
 
 
-app.get('/comments/:idRestaurant', async (req, res) => {
+//récupere toutes les vols d'un utilisateur 
+app.get('/vols-utilisateur/:id_utilisateur', async (req, res) => {
     try {
-        const idRestaurant = req.params.idRestaurant;
+        const idUtilisateur = req.params.id_utilisateur;
 
-        // Récupérer tous les commentaires associés à l'ID du restaurant
-        const commentsSnapshot = await admin.firestore().collection('comment').where('id_restaurant', '==', idRestaurant).get();
+        // Récupérer tous les documents de la collection relations_vol_passager pour l'utilisateur spécifié
+        const relationsSnapshot = await admin.firestore().collection('relations_vol_passager').where('id_passager', '==', idUtilisateur).get();
 
-        if (commentsSnapshot.empty) {
-            return res.status(404).json({ error: 'Aucun commentaire trouvé pour ce restaurant.' });
+        if (relationsSnapshot.empty) {
+            // Si aucune relation vol-passager n'est trouvée pour cet utilisateur, renvoyer une réponse vide
+            res.json([]);
+            return;
         }
 
-        const comments = [];
-        for (const doc of commentsSnapshot.docs) {
-            const commentData = doc.data();
-            commentData.id = doc.id; // Ajouter l'ID du document aux données du commentaire
-            comments.push(commentData);
+        const vols = [];
+
+        // Pour chaque relation vol-passager trouvée, récupérer les informations du vol associé
+        for (const doc of relationsSnapshot.docs) {
+            const idVol = doc.data().id_vol;
+            const volSnapshot = await admin.firestore().collection('flights').doc(idVol).get();
+
+            if (volSnapshot.exists) {
+                const volData = volSnapshot.data();
+                vols.push(volData);
+            } else {
+                console.warn(`Aucun vol trouvé avec l'ID ${idVol}`);
+            }
         }
 
-        res.json(comments);
+        res.json(vols);
     } catch (error) {
-        console.error('Erreur lors de la récupération des commentaires du restaurant:', error.message);
-        res.status(500).json({ error: 'Erreur lors de la récupération des commentaires du restaurant.' });
-    }
-});
-
-
-app.post('/add_comment' , async (req, res) => {
-    try {
-        const {id_restaurant, id_user , description , nom_restaurant  ,nom_user, rating} = req.body;
-
-        // Ajouter le commentaire à la collection 'comment' dans Firestore
-        await admin.firestore().collection('comment').add({
-            id_restaurant,
-            id_user,
-            description,
-            nom_restaurant,
-            nom_user,
-
-            rating // Ajout de la propriété rating pour le nombre d'étoiles
-        });
-
-        res.json({ message: 'Commentaire ajouté avec succès'});
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout du commentaire : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de l\'ajout du commentaire' });
+        console.error('Erreur lors de la récupération des vols de l\'utilisateur:', error.message);
+        res.status(500).json({ error: 'Erreur lors de la récupération des vols de l\'utilisateur.' });
     }
 });
 
@@ -261,122 +297,6 @@ app.post('/add_comment' , async (req, res) => {
 
 
 
-app.get('/restaurants', async (req, res) => {
-    try {
-        const restaurantsSnapshot = await admin.firestore().collection('restaurants').get();
-        const restaurants = [];
-        restaurantsSnapshot.forEach(doc => {
-            const restaurantData = doc.data();
-            restaurantData.id = doc.id; // Ajouter l'ID du document à l'objet restaurantData
-            restaurants.push(restaurantData);
-        });
-        res.json(restaurants);
-    } catch (error) {
-        console.error('Erreur lors de la récupération des restaurants:', error.message);
-        res.status(500).json({ error: 'Erreur lors de la récupération des restaurants.' });
-    }
-});
-
-
-
-
-
-
-
-// Endpoint pour obtenir la moyenne des étoiles par restaurant
-app.get('/restaurants/:id/moyenne', async (req, res) => {
-    try {
-        const idRestaurant = req.params.id;
-
-        // Récupérer tous les commentaires associés à l'ID du restaurant
-        const commentsSnapshot = await admin.firestore().collection('comment').where('id_restaurant', '==', idRestaurant).get();
-
-        if (commentsSnapshot.empty) {
-            return res.status(404).json({ error: 'Aucun commentaire trouvé pour ce restaurant.' });
-        }
-
-        let totalRating = 0;
-        let numberOfComments = 0;
-
-        // Calculer la somme des notations et le nombre total de commentaires
-        commentsSnapshot.forEach(doc => {
-            const commentData = doc.data();
-            totalRating += commentData.rating;
-            numberOfComments++;
-        });
-
-        // Calculer la moyenne des étoiles
-        const averageRating = totalRating / numberOfComments;
-
-        res.json({ moyenne: averageRating });
-    } catch (error) {
-        console.error('Erreur lors du calcul de la moyenne des étoiles:', error.message);
-        res.status(500).json({ error: 'Erreur lors du calcul de la moyenne des étoiles.' });
-    }
-});
-
-
-
-app.delete('/comments/:id', async (req, res) => {
-    try {
-        const commentId = req.params.id;
-
-        // Supprimer le commentaire de la collection 'comment' dans Firestore
-        await admin.firestore().collection('comment').doc(commentId).delete();
-
-        res.json({ message: 'Commentaire supprimé avec succès' });
-    } catch (error) {
-        console.error('Erreur lors de la suppression du commentaire : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de la suppression du commentaire' });
-    }
-});
-
-
-// Endpoint pour supprimer un restaurant
-app.delete('/restaurants/:id', async (req, res) => {
-    try {
-        const restaurantId = req.params.id;
-
-        // Supprimer le restaurant de la collection 'restaurants' dans Firestore
-        await admin.firestore().collection('restaurants').doc(restaurantId).delete();
-
-        res.json({ message: 'Restaurant supprimé avec succès' });
-    } catch (error) {
-        console.error('Erreur lors de la suppression du restaurant : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de la suppression du restaurant' });
-    }
-});
-
-
-
-
-
-
-
-app.post('/comments/:commentId/replies', async (req, res) => {
-    try {
-        const { commentId } = req.params;
-        const { userId, description } = req.body;
-
-        // Vérifier si le commentaire parent existe
-        const commentSnapshot = await admin.firestore().collection('comment').doc(commentId).get();
-        if (!commentSnapshot.exists) {
-            return res.status(404).json({ error: 'Le commentaire parent n\'existe pas' });
-        }
-
-        // Ajouter la réponse à la base de données
-        const replyRef = await admin.firestore().collection('replies').add({
-            commentId: commentId,
-            userId: userId,
-            description: description
-        });
-
-        return res.status(201).json({ message: 'Réponse ajoutée avec succès', replyId: replyRef.id });
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout de la réponse:', error);
-        return res.status(500).json({ error: 'Une erreur est survenue lors de l\'ajout de la réponse' });
-    }
-});
 
 
 
@@ -385,51 +305,7 @@ app.post('/comments/:commentId/replies', async (req, res) => {
 
 
 
-app.post('/comments/:commentId/replies', async (req, res) => {
-    try {
-        const { id_restauration, id_commentaire, nom_restauration, description } = req.body;
 
-        // Ajouter la réponse à la collection 'replies' dans Firestore
-        await admin.firestore().collection('replies').add({
-            id_restauration,
-            id_commentaire,
-            nom_restauration,
-            description
-        });
-
-        res.json({ message: 'Réponse ajoutée avec succès'});
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout de la réponse : ', error.message);
-        res.status(500).json({ error: 'Erreur lors de l\'ajout de la réponse' });
-    }
-});
-
-
-// Endpoint pour récupérer toutes les réponses d'un commentaire
-app.get('/comments/:commentId/replies', async (req, res) => {
-    try {
-        const commentId = req.params.commentId;
-
-        // Récupérer toutes les réponses associées à l'ID du commentaire
-        const repliesSnapshot = await admin.firestore().collection('replies').where('commentId', '==', commentId).get();
-
-        if (repliesSnapshot.empty) {
-            return res.status(404).json({ error: 'Aucune réponse trouvée pour ce commentaire.' });
-        }
-
-        const replies = [];
-        repliesSnapshot.forEach(doc => {
-            const replyData = doc.data();
-            replyData.id = doc.id; // Ajouter l'ID du document à l'objet replyData
-            replies.push(replyData);
-        });
-
-        res.json(replies);
-    } catch (error) {
-        console.error('Erreur lors de la récupération des réponses du commentaire:', error.message);
-        res.status(500).json({ error: 'Erreur lors de la récupération des réponses du commentaire.' });
-    }
-});
 
 
 
